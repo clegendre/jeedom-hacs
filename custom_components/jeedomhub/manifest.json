@@ -1,0 +1,11 @@
+{
+  "domain": "jeedom",
+  "name": "Jeedom Hub",
+  "version": "1.0.0",
+  "config_flow": true,
+  "documentation": "https://github.com/clegendre/jeedom-hacs",
+  "issue_tracker": "https://github.com/clegendre/jeedom-hacs/issues",
+  "dependencies": ["mqtt"],
+  "codeowners": ["@clegendre"],
+  "iot_class": "local_push"
+}

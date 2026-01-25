@@ -948,6 +948,14 @@ def build_number_yaml(eqlogic: Dict[str, Any], rule: Optional[Dict[str, Any]], c
 
 def detect_climate(eqlogic: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Detect a simple thermostat (climate entity)."""
+    # Prefer light classification for RGBW/dimmer-style devices to avoid false climate detections.
+    eq_lid = (eqlogic.get("logicalId") or "").lower()
+    eq_name = (eqlogic.get("name") or "").lower()
+    if "fibargroup_rgbw_controller_fgrgbw" in eq_lid or "fgrgbw" in eq_lid or "fgrgbw" in eq_name:
+        return None
+    cat = eqlogic.get("category") or {}
+    if str(cat.get("light", "0")) == "1":
+        return None
 
     def _setpoint_kind(cmd: Dict[str, Any]) -> str:
         def _norm(value: Any) -> str:
@@ -975,6 +983,12 @@ def detect_climate(eqlogic: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return ""
 
     cmds = list((eqlogic.get("cmds") or {}).values())
+    if any(
+        (c.get("generic_type") or "").strip() in ("LIGHT_ON", "LIGHT_OFF", "LIGHT_SLIDER", "DIMMER")
+        for c in cmds
+        if isinstance(c, dict)
+    ):
+        return None
 
     current_temp = None
     target_temp_states: Dict[str, Dict[str, Any]] = {}
@@ -1055,9 +1069,67 @@ def detect_light(eqlogic: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         elif cmd.get("type") == "info":
             infos.append(cmd)
 
+    def _norm_text(value: Any) -> str:
+        text = str(value or "").lower()
+        text = unicodedata.normalize("NFKD", text)
+        text = "".join(ch for ch in text if not unicodedata.combining(ch))
+        text = re.sub(r"[_\\-]+", " ", text)
+        text = re.sub(r"[^a-z0-9]+", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
+
+    def _color_channel(cmd: Dict[str, Any]) -> Optional[str]:
+        gt = (cmd.get("generic_type") or "").strip().upper()
+        if "RED" in gt:
+            return "red"
+        if "GREEN" in gt:
+            return "green"
+        if "BLUE" in gt:
+            return "blue"
+        if "WHITE" in gt or gt.endswith("_W"):
+            return "white"
+
+        lid = _norm_text(cmd.get("logicalId"))
+        name = _norm_text(cmd.get("name"))
+        prop = _norm_text((cmd.get("configuration") or {}).get("property"))
+        text = " ".join(t for t in (lid, name, prop) if t)
+
+        if re.search(r"\b(red|rouge)\b", text):
+            return "red"
+        if re.search(r"\b(green|vert)\b", text):
+            return "green"
+        if re.search(r"\b(blue|bleu)\b", text):
+            return "blue"
+        if re.search(r"\b(white|blanc)\b", text):
+            return "white"
+
+        tokens = set(text.split())
+        if {"rgb", "rgbw", "color", "couleur"} & tokens:
+            if "r" in tokens:
+                return "red"
+            if "g" in tokens:
+                return "green"
+            if "b" in tokens:
+                return "blue"
+            if "w" in tokens:
+                return "white"
+
+        if re.search(r"\bcolor\s*[rgbw]\b", text):
+            if "color r" in text:
+                return "red"
+            if "color g" in text:
+                return "green"
+            if "color b" in text:
+                return "blue"
+            if "color w" in text:
+                return "white"
+        return None
+
     on_cmd = None
     off_cmd = None
     brightness_set = None
+    color_set_cmds: Dict[str, Dict[str, Any]] = {}
+    color_state_cmds: Dict[str, Dict[str, Any]] = {}
+    state_bin = None
 
     for action in actions:
         lid = (action.get("logicalId") or "").lower()
@@ -1069,12 +1141,10 @@ def detect_light(eqlogic: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         elif "setvalue-false" in lid or name == "off" or gt in ("LIGHT_OFF", "SWITCH_OFF"):
             off_cmd = action
 
-        if brightness_set is None:
-            if action.get("subType") == "slider" or "#slider#" in lid or gt in ("LIGHT_SLIDER", "DIMMER"):
-                brightness_set = action
-
-    state_bin = None
-    brightness_state = None
+        if action.get("subType") == "slider" or "#slider#" in lid:
+            channel = _color_channel(action)
+            if channel and channel not in color_set_cmds:
+                color_set_cmds[channel] = action
 
     for info in infos:
         lid = (info.get("logicalId") or "").lower()
@@ -1084,9 +1154,36 @@ def detect_light(eqlogic: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             if name in ("etat", "state", "on", "off") or "currentvalue" in lid:
                 state_bin = info
 
-        if brightness_state is None and info.get("subType") == "numeric":
-            if "currentvalue" in lid or name in ("niveau", "brightness", "dimmer", "level", "valeur", "intensite", "intensite"):
-                brightness_state = info
+        if info.get("subType") == "numeric":
+            channel = _color_channel(info)
+            if channel and channel not in color_state_cmds:
+                color_state_cmds[channel] = info
+
+    for action in actions:
+        if brightness_set is not None:
+            break
+        if action in color_set_cmds.values():
+            continue
+        lid = (action.get("logicalId") or "").lower()
+        name = (action.get("name") or "").strip().lower()
+        gt = (action.get("generic_type") or "").strip()
+        if action.get("subType") == "slider" or "#slider#" in lid or gt in ("LIGHT_SLIDER", "DIMMER"):
+            brightness_set = action
+        elif any(k in name for k in ("brightness", "dimmer", "level", "niveau", "intensite", "luminosite")):
+            brightness_set = action
+
+    brightness_state = None
+    for info in infos:
+        if brightness_state is not None:
+            break
+        if info.get("subType") != "numeric":
+            continue
+        if info in color_state_cmds.values():
+            continue
+        lid = (info.get("logicalId") or "").lower()
+        name = (info.get("name") or "").strip().lower()
+        if "currentvalue" in lid or name in ("niveau", "brightness", "dimmer", "level", "valeur", "intensite", "luminosite"):
+            brightness_state = info
 
     cat = eqlogic.get("category") or {}
     is_marked_light = str(cat.get("light", "0")) == "1"
@@ -1097,14 +1194,18 @@ def detect_light(eqlogic: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if isinstance(c, dict)
     )
 
-    if brightness_set or is_marked_light or has_light_generic:
-        if (on_cmd and off_cmd) or brightness_set:
+    has_rgb = all(k in color_set_cmds for k in ("red", "green", "blue"))
+
+    if has_rgb or brightness_set or is_marked_light or has_light_generic:
+        if has_rgb or (on_cmd and off_cmd) or brightness_set:
             return {
                 "on_cmd": on_cmd,
                 "off_cmd": off_cmd,
                 "brightness_set_cmd": brightness_set,
                 "state_cmd": state_bin,
                 "brightness_state_cmd": brightness_state,
+                "color_set_cmds": color_set_cmds,
+                "color_state_cmds": color_state_cmds,
             }
 
     return None
@@ -1468,6 +1569,16 @@ def generate_actions(eqlogic_store: Dict[int, Dict[str, Any]], config: Discovery
                     if cmd is not None and not allows_cmd(rule, cmd, config):
                         ok = False
                         break
+                if ok:
+                    for cmd in (lt.get("color_set_cmds") or {}).values():
+                        if cmd is not None and not allows_cmd(rule, cmd, config):
+                            ok = False
+                            break
+                if ok:
+                    for cmd in (lt.get("color_state_cmds") or {}).values():
+                        if cmd is not None and not allows_cmd(rule, cmd, config):
+                            ok = False
+                            break
             if ok:
                 payload: Dict[str, Any] = {}
                 if lt.get("on_cmd") is not None:
@@ -1476,12 +1587,31 @@ def generate_actions(eqlogic_store: Dict[int, Dict[str, Any]], config: Discovery
                     payload["off_cmd_id"] = int(lt["off_cmd"].get("id"))
                 if lt.get("brightness_set_cmd") is not None:
                     payload["brightness_cmd_id"] = int(lt["brightness_set_cmd"].get("id"))
-                    payload["brightness_max"] = 99
-                    payload["default_on_brightness"] = 99
+                    bmin, bmax = _cmd_range(lt["brightness_set_cmd"])
+                    if bmin is not None:
+                        payload["brightness_min"] = bmin
+                    if bmax is not None:
+                        payload["brightness_max"] = bmax
+                        payload["default_on_brightness"] = bmax
+                    else:
+                        payload["brightness_max"] = 99
+                        payload["default_on_brightness"] = 99
                 if lt.get("state_cmd") is not None:
                     payload["state_cmd_id"] = int(lt["state_cmd"].get("id"))
                 if lt.get("brightness_state_cmd") is not None:
                     payload["brightness_state_cmd_id"] = int(lt["brightness_state_cmd"].get("id"))
+                for channel in ("red", "green", "blue", "white"):
+                    cmd = (lt.get("color_set_cmds") or {}).get(channel)
+                    if cmd is not None:
+                        payload[f"{channel}_cmd_id"] = int(cmd.get("id"))
+                        cmin, cmax = _cmd_range(cmd)
+                        if cmin is not None:
+                            payload[f"{channel}_min"] = cmin
+                        if cmax is not None:
+                            payload[f"{channel}_max"] = cmax
+                    cmd = (lt.get("color_state_cmds") or {}).get(channel)
+                    if cmd is not None:
+                        payload[f"{channel}_state_cmd_id"] = int(cmd.get("id"))
                 actions["light"][f"jeedom_{eq_id}"] = payload
 
         wh = detect_water_heater(eq, rule, config)

@@ -288,6 +288,10 @@ class JeedomHub:
                 state_cmd_ids["state"] = int(action_config["state_cmd_id"])
             if action_config.get("brightness_state_cmd_id") is not None:
                 state_cmd_ids["brightness"] = int(action_config["brightness_state_cmd_id"])
+            for channel in ("red", "green", "blue", "white"):
+                key = f"{channel}_state_cmd_id"
+                if action_config.get(key) is not None:
+                    state_cmd_ids[channel] = int(action_config[key])
         elif platform == Platform.COVER:
             if action_config.get("position_state_cmd_id") is not None:
                 state_cmd_ids["position"] = int(action_config["position_state_cmd_id"])

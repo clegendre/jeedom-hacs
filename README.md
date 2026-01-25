@@ -102,7 +102,18 @@ devices:
     entity_overrides:
       5678:
         name: Living Room Temperature
+
+  - match:
+      eqlogic_name: "Living Room Heater"
+    # Optional: force the platform for this device (supported: light, switch, cover,
+    # number, select, climate, water_heater).
+    platform: water_heater
+    include:
+      cmd_ids: [2001, 2002, 2003]
 ```
+Notes:
+- `platform` is an eqLogic-level override; it skips auto-detection for the main entity.
+- `sensor`/`binary_sensor` entities are still detected per-command.
 
 ## MQTT topics
 - Discovery: `jeedom/discovery/eqLogic/#`

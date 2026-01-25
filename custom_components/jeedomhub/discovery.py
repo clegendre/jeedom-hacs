@@ -70,6 +70,16 @@ GENERIC_BINARY_DEFAULTS = {
     "OPENING": {"device_class": "opening"},
 }
 
+EQ_PLATFORMS = {
+    "climate",
+    "cover",
+    "light",
+    "number",
+    "select",
+    "switch",
+    "water_heater",
+}
+
 # Pilot wire modes (Qubino flush pilot, etc.)
 PILOT_WIRE_VALUES = {0, 20, 30, 40, 50, 99, 255}
 PILOT_WIRE_THRESHOLD_OFF = 10
@@ -238,6 +248,15 @@ def find_rule(eqlogic: Dict[str, Any], config: DiscoveryConfig) -> Optional[Dict
             return rule
         if "eqlogic_name" in match and eq_name == match["eqlogic_name"]:
             return rule
+    return None
+
+
+def rule_platform(rule: Optional[Dict[str, Any]]) -> Optional[str]:
+    if not rule:
+        return None
+    platform = str(rule.get("platform") or rule.get("device_type") or "").strip().lower()
+    if platform in EQ_PLATFORMS:
+        return platform
     return None
 
 
@@ -1455,48 +1474,83 @@ def generate_entity_doc(eqlogic_store: Dict[int, Dict[str, Any]], config: Discov
             if sensor:
                 sensors.append(sensor)
 
-        has_climate = False
-        pcl = build_pilot_climate_yaml(eq, rule, config)
-        if pcl:
-            climates.append(pcl)
-            has_climate = True
-        if not has_climate:
-            climate = build_climate_yaml(eq, rule, config)
-            if climate:
-                climates.append(climate)
-                has_climate = True
+        forced = rule_platform(rule)
 
-        has_water_heater = False
-        wh = build_water_heater_yaml(eq, rule, config)
-        if wh:
-            water_heaters.append(wh)
-            has_water_heater = True
-
-        has_cover = False
-        cover = build_cover_yaml(eq, rule, config)
-        if cover:
-            covers.append(cover)
-            has_cover = True
-
-        has_light = False
-        if not has_cover and not has_climate and not has_water_heater:
+        if forced == "climate":
+            pcl = build_pilot_climate_yaml(eq, rule, config)
+            if pcl:
+                climates.append(pcl)
+            else:
+                climate = build_climate_yaml(eq, rule, config)
+                if climate:
+                    climates.append(climate)
+        elif forced == "water_heater":
+            wh = build_water_heater_yaml(eq, rule, config)
+            if wh:
+                water_heaters.append(wh)
+        elif forced == "cover":
+            cover = build_cover_yaml(eq, rule, config)
+            if cover:
+                covers.append(cover)
+        elif forced == "light":
             light = build_light_yaml(eq, rule, config)
             if light:
                 lights.append(light)
-                has_light = True
-
-        if not has_light and not has_cover and not has_climate and not has_water_heater:
+        elif forced == "switch":
             switch = build_switch_yaml(eq, rule, config)
             if switch:
                 switches.append(switch)
+        elif forced == "number":
+            number = build_number_yaml(eq, rule, config)
+            if number:
+                numbers.append(number)
+        elif forced == "select":
+            select = build_select_yaml(eq, rule, config)
+            if select:
+                selects.append(select)
+        else:
+            has_climate = False
+            pcl = build_pilot_climate_yaml(eq, rule, config)
+            if pcl:
+                climates.append(pcl)
+                has_climate = True
+            if not has_climate:
+                climate = build_climate_yaml(eq, rule, config)
+                if climate:
+                    climates.append(climate)
+                    has_climate = True
 
-        number = build_number_yaml(eq, rule, config)
-        if number:
-            numbers.append(number)
+            has_water_heater = False
+            wh = build_water_heater_yaml(eq, rule, config)
+            if wh:
+                water_heaters.append(wh)
+                has_water_heater = True
 
-        select = build_select_yaml(eq, rule, config)
-        if select:
-            selects.append(select)
+            has_cover = False
+            cover = build_cover_yaml(eq, rule, config)
+            if cover:
+                covers.append(cover)
+                has_cover = True
+
+            has_light = False
+            if not has_cover and not has_climate and not has_water_heater:
+                light = build_light_yaml(eq, rule, config)
+                if light:
+                    lights.append(light)
+                    has_light = True
+
+            if not has_light and not has_cover and not has_climate and not has_water_heater:
+                switch = build_switch_yaml(eq, rule, config)
+                if switch:
+                    switches.append(switch)
+
+            number = build_number_yaml(eq, rule, config)
+            if number:
+                numbers.append(number)
+
+            select = build_select_yaml(eq, rule, config)
+            if select:
+                selects.append(select)
 
     return {
         "sensor": sensors,
@@ -1559,8 +1613,18 @@ def generate_actions(eqlogic_store: Dict[int, Dict[str, Any]], config: Discovery
     for eq_id in sorted(eqlogic_store.keys()):
         eq = eqlogic_store[eq_id]
         rule = find_rule(eq, config)
+        forced = rule_platform(rule)
 
-        lt = detect_light(eq)
+        allow_light = forced is None or forced == "light"
+        allow_switch = forced is None or forced == "switch"
+        allow_water_heater = forced is None or forced == "water_heater"
+        allow_cover = forced is None or forced == "cover"
+        allow_number = forced is None or forced == "number"
+        allow_select = forced is None or forced == "select"
+        allow_climate = forced is None or forced == "climate"
+        allow_pilot = forced is None or forced == "climate"
+
+        lt = detect_light(eq) if allow_light else None
         if lt:
             ok = True
             if rule:
@@ -1614,7 +1678,7 @@ def generate_actions(eqlogic_store: Dict[int, Dict[str, Any]], config: Discovery
                         payload[f"{channel}_state_cmd_id"] = int(cmd.get("id"))
                 actions["light"][f"jeedom_{eq_id}"] = payload
 
-        wh = detect_water_heater(eq, rule, config)
+        wh = detect_water_heater(eq, rule, config) if allow_water_heater else None
         if wh:
             actions["water_heater"][f"jeedom_{eq_id}"] = {
                 "state_cmd_id": int(wh["state_cmd"].get("id")),
@@ -1622,7 +1686,7 @@ def generate_actions(eqlogic_store: Dict[int, Dict[str, Any]], config: Discovery
                 "off_cmd_id": int(wh["off_cmd"].get("id")),
             }
 
-        if not lt and not wh:
+        if allow_switch and not lt and not wh:
             sw = detect_switch(eq)
             if sw:
                 state_cmd = sw["state_cmd"]
@@ -1635,7 +1699,7 @@ def generate_actions(eqlogic_store: Dict[int, Dict[str, Any]], config: Discovery
                         "off_cmd_id": int(off_cmd.get("id")),
                     }
 
-        cv = detect_cover(eq)
+        cv = detect_cover(eq) if allow_cover else None
         if cv:
             pos = cv["position_state_cmd"]
             up = cv["up_cmd"]
@@ -1671,7 +1735,7 @@ def generate_actions(eqlogic_store: Dict[int, Dict[str, Any]], config: Discovery
                         payload["set_position_property"] = sprop
                 actions["cover"][f"jeedom_{eq_id}"] = payload
 
-        nb = detect_number(eq)
+        nb = detect_number(eq) if allow_number else None
         if nb:
             state_cmd = nb["state_cmd"]
             set_cmd = nb["set_cmd"]
@@ -1681,7 +1745,7 @@ def generate_actions(eqlogic_store: Dict[int, Dict[str, Any]], config: Discovery
                     "set_cmd_id": int(set_cmd.get("id")),
                 }
 
-        cl = detect_climate(eq)
+        cl = detect_climate(eq) if allow_climate else None
         if cl:
             ok = True
             if rule:
@@ -1706,7 +1770,7 @@ def generate_actions(eqlogic_store: Dict[int, Dict[str, Any]], config: Discovery
                     payload[f"temperature_state_cmd_id_{kind}"] = int(cmd.get("id"))
                 actions["climate"][f"jeedom_{eq_id}"] = payload
 
-        sel = detect_pilot_wire(eq)
+        sel = detect_pilot_wire(eq) if (allow_select or allow_pilot) else None
         if sel:
             if rule and not allows_cmd(rule, sel["state_cmd"], config):
                 sel = None
@@ -1723,45 +1787,46 @@ def generate_actions(eqlogic_store: Dict[int, Dict[str, Any]], config: Discovery
                     if val is not None:
                         payload["value"] = val
                     options_map[str(opt["label"])] = payload
-                if len(options_map) >= 2:
+                if allow_select and len(options_map) >= 2:
                     actions["select"][f"jeedom_{eq_id}"] = {
                         "state_cmd_id": int(sel["state_cmd"].get("id")),
                         "options": options_map,
                     }
 
-                pilot_cmds = _pilot_wire_cmds(options)
-                if pilot_cmds.get("off") and pilot_cmds.get("comfort"):
-                    mode_map: Dict[str, Any] = {}
-                    preset_map: Dict[str, Any] = {}
+                if allow_pilot:
+                    pilot_cmds = _pilot_wire_cmds(options)
+                    if pilot_cmds.get("off") and pilot_cmds.get("comfort"):
+                        mode_map: Dict[str, Any] = {}
+                        preset_map: Dict[str, Any] = {}
 
-                    def _add_cmd(target: Dict[str, Any], key: str, opt: Optional[Dict[str, Any]]):
-                        if not opt:
-                            return
-                        cmd = opt["cmd"]
-                        if rule and not allows_cmd(rule, cmd, config):
-                            return
-                        payload = {"cmd_id": int(cmd.get("id"))}
-                        val = _cmd_value(cmd)
-                        if val is not None:
-                            payload["value"] = val
-                        target[key] = payload
+                        def _add_cmd(target: Dict[str, Any], key: str, opt: Optional[Dict[str, Any]]):
+                            if not opt:
+                                return
+                            cmd = opt["cmd"]
+                            if rule and not allows_cmd(rule, cmd, config):
+                                return
+                            payload = {"cmd_id": int(cmd.get("id"))}
+                            val = _cmd_value(cmd)
+                            if val is not None:
+                                payload["value"] = val
+                            target[key] = payload
 
-                    _add_cmd(mode_map, "heat", pilot_cmds.get("comfort"))
-                    _add_cmd(mode_map, "off", pilot_cmds.get("off"))
+                        _add_cmd(mode_map, "heat", pilot_cmds.get("comfort"))
+                        _add_cmd(mode_map, "off", pilot_cmds.get("off"))
 
-                    _add_cmd(preset_map, "comfort", pilot_cmds.get("comfort"))
-                    _add_cmd(preset_map, "eco", pilot_cmds.get("eco"))
-                    _add_cmd(preset_map, "away", pilot_cmds.get("away"))
-                    _add_cmd(preset_map, "comfort-1", pilot_cmds.get("comfort_1"))
-                    _add_cmd(preset_map, "comfort-2", pilot_cmds.get("comfort_2"))
-                    _add_cmd(preset_map, "none", pilot_cmds.get("off"))
+                        _add_cmd(preset_map, "comfort", pilot_cmds.get("comfort"))
+                        _add_cmd(preset_map, "eco", pilot_cmds.get("eco"))
+                        _add_cmd(preset_map, "away", pilot_cmds.get("away"))
+                        _add_cmd(preset_map, "comfort-1", pilot_cmds.get("comfort_1"))
+                        _add_cmd(preset_map, "comfort-2", pilot_cmds.get("comfort_2"))
+                        _add_cmd(preset_map, "none", pilot_cmds.get("off"))
 
-                    if mode_map and preset_map:
-                        actions["pilot_climate"][f"jeedom_{eq_id}"] = {
-                            "state_cmd_id": int(sel["state_cmd"].get("id")),
-                            "mode": mode_map,
-                            "preset": preset_map,
-                        }
+                        if mode_map and preset_map:
+                            actions["pilot_climate"][f"jeedom_{eq_id}"] = {
+                                "state_cmd_id": int(sel["state_cmd"].get("id")),
+                                "mode": mode_map,
+                                "preset": preset_map,
+                            }
 
     actions = {k: v for k, v in actions.items() if v}
     return actions

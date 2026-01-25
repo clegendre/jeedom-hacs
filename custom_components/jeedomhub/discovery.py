@@ -1002,12 +1002,6 @@ def detect_climate(eqlogic: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return ""
 
     cmds = list((eqlogic.get("cmds") or {}).values())
-    if any(
-        (c.get("generic_type") or "").strip() in ("LIGHT_ON", "LIGHT_OFF", "LIGHT_SLIDER", "DIMMER")
-        for c in cmds
-        if isinstance(c, dict)
-    ):
-        return None
 
     current_temp = None
     target_temp_states: Dict[str, Dict[str, Any]] = {}

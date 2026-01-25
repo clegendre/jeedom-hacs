@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 from homeassistant.components import mqtt
 from homeassistant.const import Platform
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.storage import Store
 
 from .api import JeedomApi
 from .const import (
@@ -37,6 +38,8 @@ _LOGGER = logging.getLogger(__name__)
 
 UID_CMD_RE = re.compile(r"^jeedom_(\d+)_(\d+)$")
 UID_EQ_RE = re.compile(r"^jeedom_(\d+)")
+
+DISCOVERY_STORE_VERSION = 1
 
 PLATFORM_BY_KEY = {
     "sensor": Platform.SENSOR,
@@ -75,6 +78,8 @@ class JeedomHub:
         }
         self._actions: Dict[str, Any] = {}
         self._lock = asyncio.Lock()
+        self._store = Store(hass, DISCOVERY_STORE_VERSION, f"{DOMAIN}.{entry.entry_id}.discovery")
+        self._save_task: Optional[asyncio.Task] = None
 
         config_path = entry.options.get(CONF_CONFIG_PATH) or entry.data.get(CONF_CONFIG_PATH)
         path_obj = Path(config_path) if config_path else None
@@ -129,6 +134,7 @@ class JeedomHub:
     async def async_setup(self) -> None:
         _LOGGER.debug("Setting up Jeedom hub")
         if self.is_native_mode:
+            await self._restore_discovery()
             self._unsub_mqtt.append(
                 await mqtt.async_subscribe(
                     self.hass, MQTT_DISCOVERY_TOPIC, self._handle_discovery_message
@@ -148,6 +154,10 @@ class JeedomHub:
         for unsub in self._unsub_mqtt:
             unsub()
         self._unsub_mqtt.clear()
+        if self._save_task and not self._save_task.done():
+            self._save_task.cancel()
+            self._save_task = None
+        await self._flush_store()
 
     def signal_new_entities(self, platform: Platform) -> str:
         return f"{DOMAIN}_{self.entry.entry_id}_{platform.value}_new"
@@ -179,6 +189,7 @@ class JeedomHub:
             self._discovery.update_eqlogic(data)
             entity_doc, actions = await self.hass.async_add_executor_job(self._discovery.generate)
             self._apply_updates(entity_doc, actions)
+            self._schedule_store_save()
 
     async def _handle_event_message(self, msg) -> None:
         topic = msg.topic or ""
@@ -330,6 +341,42 @@ class JeedomHub:
         if device.get("model"):
             info["model"] = device["model"]
         return info
+
+    async def _restore_discovery(self) -> None:
+        stored = await self._store.async_load()
+        if not stored:
+            return
+        eqlogic_store = stored.get("eqlogic_store")
+        if not isinstance(eqlogic_store, dict):
+            return
+        restored = 0
+        for eqlogic in eqlogic_store.values():
+            if isinstance(eqlogic, dict):
+                self._discovery.update_eqlogic(eqlogic)
+                restored += 1
+        if not restored:
+            return
+        entity_doc, actions = await self.hass.async_add_executor_job(self._discovery.generate)
+        self._apply_updates(entity_doc, actions)
+        _LOGGER.debug("Restored Jeedom discovery cache (%s devices)", restored)
+
+    def _schedule_store_save(self) -> None:
+        if self._save_task and not self._save_task.done():
+            return
+        self._save_task = self.hass.async_create_task(self._async_save_store_delayed())
+
+    async def _async_save_store_delayed(self) -> None:
+        try:
+            await asyncio.sleep(2)
+            await self._flush_store()
+        finally:
+            self._save_task = None
+
+    async def _flush_store(self) -> None:
+        if not self.is_native_mode:
+            return
+        payload = {"eqlogic_store": {str(k): v for k, v in self._discovery.eqlogic_store.items()}}
+        await self._store.async_save(payload)
 
 
 __all__ = ["JeedomHub"]

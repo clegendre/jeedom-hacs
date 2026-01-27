@@ -44,6 +44,7 @@ DISCOVERY_STORE_VERSION = 1
 PLATFORM_BY_KEY = {
     "sensor": Platform.SENSOR,
     "binary_sensor": Platform.BINARY_SENSOR,
+    "alarm_control_panel": Platform.ALARM_CONTROL_PANEL,
     "climate": Platform.CLIMATE,
     "light": Platform.LIGHT,
     "switch": Platform.SWITCH,
@@ -54,6 +55,7 @@ PLATFORM_BY_KEY = {
 }
 
 ACTION_KEY_BY_PLATFORM = {
+    Platform.ALARM_CONTROL_PANEL: "alarm_control_panel",
     Platform.SWITCH: "switch",
     Platform.LIGHT: "light",
     Platform.COVER: "cover",
@@ -299,6 +301,9 @@ class JeedomHub:
             if action_config.get("state_cmd_id") is not None:
                 state_cmd_ids["state"] = int(action_config["state_cmd_id"])
         elif platform == Platform.SELECT:
+            if action_config.get("state_cmd_id") is not None:
+                state_cmd_ids["state"] = int(action_config["state_cmd_id"])
+        elif platform == Platform.ALARM_CONTROL_PANEL:
             if action_config.get("state_cmd_id") is not None:
                 state_cmd_ids["state"] = int(action_config["state_cmd_id"])
         elif platform == Platform.CLIMATE:

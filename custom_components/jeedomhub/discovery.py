@@ -703,16 +703,24 @@ def build_alarm_control_panel_yaml(
     name = ov.get("name") or base_name
 
     default_state_map = {
-        "0": "armed_home",
+        "0": "disarmed",
         "1": "armed_away",
-        "home": "armed_home",
+        "home": "disarmed",
         "away": "armed_away",
     }
+
+    rule_state_map = None
+    if rule:
+        acp_cfg = rule.get("alarm_control_panel")
+        if isinstance(acp_cfg, dict) and acp_cfg.get("state_map") is not None:
+            rule_state_map = acp_cfg.get("state_map")
+        elif rule.get("alarm_state_map") is not None:
+            rule_state_map = rule.get("alarm_state_map")
 
     item: Dict[str, Any] = {
         "name": name,
         "unique_id": ov.get("unique_id") or f"jeedom_{eq_id}_alarm_control_panel",
-        "state_map": ov.get("state_map") or default_state_map,
+        "state_map": ov.get("state_map") or rule_state_map or default_state_map,
         "device": {
             "identifiers": [ov.get("device_identifier") or f"jeedom_{dslug}"],
             "name": ov.get("device_name") or base_name,

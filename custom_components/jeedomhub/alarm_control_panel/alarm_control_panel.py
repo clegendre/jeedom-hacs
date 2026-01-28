@@ -59,25 +59,25 @@ class JeedomAlarmControlPanel(JeedomEntity, AlarmControlPanelEntity):
         self._attr_alarm_state = _map_alarm_state(value, self._state_map)
         self._safe_write_ha_state()
 
-    async def async_alarm_arm_home(self, **kwargs) -> None:
+    async def async_alarm_arm_home(self, code: str | None = None) -> None:
         cmd_id = self._spec.action_config.get("arm_home_cmd_id")
         if cmd_id is None:
             return
         await self._hub.api.async_exec_cmd(int(cmd_id))
 
-    async def async_alarm_arm_away(self, **kwargs) -> None:
+    async def async_alarm_arm_away(self, code: str | None = None) -> None:
         cmd_id = self._spec.action_config.get("arm_away_cmd_id")
         if cmd_id is None:
             return
         await self._hub.api.async_exec_cmd(int(cmd_id))
 
-    async def async_alarm_arm_night(self, **kwargs) -> None:
+    async def async_alarm_arm_night(self, code: str | None = None) -> None:
         cmd_id = self._spec.action_config.get("arm_night_cmd_id")
         if cmd_id is None:
             return
         await self._hub.api.async_exec_cmd(int(cmd_id))
 
-    async def async_alarm_disarm(self, **kwargs) -> None:
+    async def async_alarm_disarm(self, code: str | None = None) -> None:
         cmd_id = self._spec.action_config.get("disarm_cmd_id")
         if cmd_id is None:
             return

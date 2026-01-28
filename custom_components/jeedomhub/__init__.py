@@ -11,6 +11,7 @@ from .hub import JeedomHub
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [
+    Platform.ALARM_CONTROL_PANEL,
     Platform.BINARY_SENSOR,
     Platform.CLIMATE,
     Platform.COVER,

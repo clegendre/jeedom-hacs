@@ -21,6 +21,7 @@ IMPORT_MODE_MQTT = "mqtt_entities"
 SUPPORTED_DOMAINS = [
     "sensor",
     "binary_sensor",
+    "alarm_control_panel",
     "switch",
     "light",
     "cover",

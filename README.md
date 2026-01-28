@@ -69,6 +69,7 @@ These can be updated after setup via the integration options:
 
 ## Supported domains (native mode)
 - `binary_sensor`
+- `alarm_control_panel`
 - `climate`
 - `cover`
 - `light`
@@ -106,10 +107,20 @@ devices:
   - match:
       eqlogic_name: "Living Room Heater"
     # Optional: force the platform for this device (supported: light, switch, cover,
-    # number, select, climate, water_heater).
+    # number, select, climate, water_heater, alarm_control_panel).
     platform: water_heater
     include:
       cmd_ids: [2001, 2002, 2003]
+
+  - match:
+      eqlogic_name: "RFID Keypad"
+    platform: alarm_control_panel
+    # Optional: override the alarm state mapping for this device.
+    # You can also set this under entity_overrides for the Alarm cmd id.
+    alarm_control_panel:
+      state_map:
+        "0": disarmed
+        "1": armed_away
 ```
 Notes:
 - `platform` is an eqLogic-level override; it skips auto-detection for the main entity.

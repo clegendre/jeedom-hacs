@@ -71,6 +71,7 @@ GENERIC_BINARY_DEFAULTS = {
 }
 
 EQ_PLATFORMS = {
+    "alarm_control_panel",
     "climate",
     "cover",
     "light",
@@ -87,6 +88,12 @@ PILOT_WIRE_THRESHOLD_FROST = 20
 PILOT_WIRE_THRESHOLD_ECO = 30
 PILOT_WIRE_THRESHOLD_COMFORT_2 = 40
 PILOT_WIRE_THRESHOLD_COMFORT_1 = 50
+
+KEYPAD_EQ_NAME_HINTS = ("keypad", "clavier", "rfid")
+KEYPAD_ALARM_HINTS = ("alarm", "alarme", "armed", "arm")
+KEYPAD_HOME_HINTS = ("home", "maison", "domicile")
+KEYPAD_AWAY_HINTS = ("away", "absent", "exterieur", "exterior", "outside")
+KEYPAD_DISARM_HINTS = ("disarm", "desarm", "unarm", "off", "unlock")
 
 
 @dataclass
@@ -237,6 +244,105 @@ def vibration_device_class(cmd: Dict[str, Any]) -> Optional[str]:
     if any(k in prop for k in ("shock", "vibration", "vibrate", "impact", "choc")):
         return "vibration"
     return None
+
+
+def tamper_device_class(cmd: Dict[str, Any]) -> Optional[str]:
+    """Return device_class for tamper/sabotage commands (not limited to class 113)."""
+
+    def norm(text: Optional[str]) -> str:
+        text = (text or "").lower()
+        text = re.sub(r"[_\\-]+", " ", text)
+        text = re.sub(r"\s+", " ", text).strip()
+        return text
+
+    cfg = cmd.get("configuration") or {}
+    lid = norm(cmd.get("logicalId"))
+    name = norm(cmd.get("name"))
+    prop = norm(cfg.get("property"))
+
+    if any(k in lid for k in ("sabotage", "tamper")):
+        return "tamper"
+    if any(k in name for k in ("sabotage", "tamper")):
+        return "tamper"
+    if any(k in prop for k in ("sabotage", "tamper")):
+        return "tamper"
+    return None
+
+
+def is_keypad_eqlogic(eqlogic: Dict[str, Any]) -> bool:
+    name_slug = slugify(eqlogic.get("name", ""))
+    logical_slug = slugify(eqlogic.get("logicalId", ""))
+    eqtype_slug = slugify(eqlogic.get("eqType_name", ""))
+    return any(
+        hint in name_slug or hint in logical_slug or hint in eqtype_slug
+        for hint in KEYPAD_EQ_NAME_HINTS
+    )
+
+
+def is_keypad_alarm_cmd(eqlogic: Dict[str, Any], cmd: Dict[str, Any]) -> bool:
+    if not is_keypad_eqlogic(eqlogic):
+        return False
+    name_slug = slugify(cmd.get("name") or "")
+    lid_slug = slugify(cmd.get("logicalId") or "")
+    if any(hint in name_slug for hint in KEYPAD_ALARM_HINTS):
+        return True
+    if any(hint in lid_slug for hint in KEYPAD_ALARM_HINTS):
+        return True
+    return False
+
+
+def detect_alarm_control_panel(eqlogic: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Detect an alarm control panel from keypad-like devices."""
+    if not is_keypad_eqlogic(eqlogic):
+        return None
+
+    cmds = list((eqlogic.get("cmds") or {}).values())
+    state_cmd = None
+
+    for cmd in sorted(cmds, key=lambda c: int(c.get("id", 0))):
+        if is_node_mgmt_cmd(cmd) or is_scene_id_cmd(cmd):
+            continue
+        if cmd.get("type") != "info":
+            continue
+        if (cmd.get("subType") or "").lower() not in ("binary", "numeric", "string"):
+            continue
+        if is_keypad_alarm_cmd(eqlogic, cmd):
+            state_cmd = cmd
+            break
+
+    if not state_cmd:
+        return None
+
+    arm_home_cmd = None
+    arm_away_cmd = None
+    disarm_cmd = None
+    arm_night_cmd = None
+
+    for cmd in cmds:
+        if is_node_mgmt_cmd(cmd) or is_scene_id_cmd(cmd):
+            continue
+        if cmd.get("type") != "action":
+            continue
+        label = slugify(cmd.get("name") or cmd.get("logicalId") or "")
+        if arm_home_cmd is None and any(hint in label for hint in KEYPAD_HOME_HINTS):
+            arm_home_cmd = cmd
+            continue
+        if arm_away_cmd is None and any(hint in label for hint in KEYPAD_AWAY_HINTS):
+            arm_away_cmd = cmd
+            continue
+        if disarm_cmd is None and any(hint in label for hint in KEYPAD_DISARM_HINTS):
+            disarm_cmd = cmd
+            continue
+        if arm_night_cmd is None and "night" in label:
+            arm_night_cmd = cmd
+
+    return {
+        "state_cmd": state_cmd,
+        "arm_home_cmd": arm_home_cmd,
+        "arm_away_cmd": arm_away_cmd,
+        "arm_night_cmd": arm_night_cmd,
+        "disarm_cmd": disarm_cmd,
+    }
 
 
 def find_rule(eqlogic: Dict[str, Any], config: DiscoveryConfig) -> Optional[Dict[str, Any]]:
@@ -428,6 +534,8 @@ def _pilot_wire_cmds(options: list[Dict[str, Any]]) -> Dict[str, Optional[Dict[s
 def build_sensor_yaml(eqlogic: Dict[str, Any], cmd: Dict[str, Any], rule: Optional[Dict[str, Any]], config: DiscoveryConfig) -> Optional[Dict[str, Any]]:
     if cmd.get("type") != "info":
         return None
+    if is_keypad_alarm_cmd(eqlogic, cmd):
+        return None
     generic = (cmd.get("generic_type") or "").strip().upper()
     if generic in GENERIC_BINARY_DEFAULTS:
         return None
@@ -506,6 +614,8 @@ def build_binary_sensor_yaml(eqlogic: Dict[str, Any], cmd: Dict[str, Any], rule:
 
     if not allows_cmd(rule, cmd, config):
         return None
+    if is_keypad_alarm_cmd(eqlogic, cmd):
+        return None
 
     generic = (cmd.get("generic_type") or "").strip().upper()
     cmd_name_raw = (cmd.get("name") or cmd.get("logicalId") or "").strip()
@@ -516,8 +626,9 @@ def build_binary_sensor_yaml(eqlogic: Dict[str, Any], cmd: Dict[str, Any], rule:
 
     notif_113_class = notification_113_device_class(cmd)
     vibration_class = vibration_device_class(cmd)
+    tamper_class = tamper_device_class(cmd)
 
-    if not (is_generic_binary or is_motion_hint or notif_113_class or vibration_class):
+    if not (is_generic_binary or is_motion_hint or notif_113_class or vibration_class or tamper_class):
         return None
 
     eq_id = int(eqlogic.get("id"))
@@ -553,6 +664,8 @@ def build_binary_sensor_yaml(eqlogic: Dict[str, Any], cmd: Dict[str, Any], rule:
         item["device_class"] = notif_113_class
     elif vibration_class:
         item["device_class"] = vibration_class
+    elif tamper_class:
+        item["device_class"] = tamper_class
     elif generic == "PRESENCE" or is_motion_hint:
         item["device_class"] = "motion"
     else:
@@ -564,6 +677,59 @@ def build_binary_sensor_yaml(eqlogic: Dict[str, Any], cmd: Dict[str, Any], rule:
         if ov.get(k) is not None:
             item[k] = ov[k]
 
+    item = {k: v for k, v in item.items() if v is not None}
+    return item
+
+
+def build_alarm_control_panel_yaml(
+    eqlogic: Dict[str, Any], rule: Optional[Dict[str, Any]], config: DiscoveryConfig
+) -> Optional[Dict[str, Any]]:
+    detected = detect_alarm_control_panel(eqlogic)
+    if not detected:
+        return None
+
+    state_cmd = detected["state_cmd"]
+    if rule and not allows_cmd(rule, state_cmd, config):
+        return None
+
+    eq_id = int(eqlogic.get("id"))
+    eq_name = eqlogic.get("name", f"Jeedom {eq_id}")
+    dslug = device_slug(eqlogic, rule)
+
+    state_cmd_id = int(state_cmd.get("id"))
+    ov = get_override(rule, state_cmd_id)
+
+    base_name = (rule.get("device_name") if rule else None) or eq_name
+    name = ov.get("name") or base_name
+
+    default_state_map = {
+        "0": "disarmed",
+        "1": "armed_away",
+        "home": "disarmed",
+        "away": "armed_away",
+    }
+
+    rule_state_map = None
+    if rule:
+        acp_cfg = rule.get("alarm_control_panel")
+        if isinstance(acp_cfg, dict) and acp_cfg.get("state_map") is not None:
+            rule_state_map = acp_cfg.get("state_map")
+        elif rule.get("alarm_state_map") is not None:
+            rule_state_map = rule.get("alarm_state_map")
+
+    item: Dict[str, Any] = {
+        "name": name,
+        "unique_id": ov.get("unique_id") or f"jeedom_{eq_id}_alarm_control_panel",
+        "state_map": ov.get("state_map") or rule_state_map or default_state_map,
+        "device": {
+            "identifiers": [ov.get("device_identifier") or f"jeedom_{dslug}"],
+            "name": ov.get("device_name") or base_name,
+            "manufacturer": ov.get("manufacturer"),
+            "model": ov.get("model"),
+        },
+    }
+
+    item["device"] = {k: v for k, v in item["device"].items() if v}
     item = {k: v for k, v in item.items() if v is not None}
     return item
 
@@ -1447,6 +1613,7 @@ def build_climate_yaml(eqlogic: Dict[str, Any], rule: Optional[Dict[str, Any]], 
 def generate_entity_doc(eqlogic_store: Dict[int, Dict[str, Any]], config: DiscoveryConfig) -> Dict[str, list[Dict[str, Any]]]:
     sensors: list[Dict[str, Any]] = []
     binary_sensors: list[Dict[str, Any]] = []
+    alarm_control_panels: list[Dict[str, Any]] = []
     lights: list[Dict[str, Any]] = []
     switches: list[Dict[str, Any]] = []
     water_heaters: list[Dict[str, Any]] = []
@@ -1470,7 +1637,11 @@ def generate_entity_doc(eqlogic_store: Dict[int, Dict[str, Any]], config: Discov
 
         forced = rule_platform(rule)
 
-        if forced == "climate":
+        if forced == "alarm_control_panel":
+            acp = build_alarm_control_panel_yaml(eq, rule, config)
+            if acp:
+                alarm_control_panels.append(acp)
+        elif forced == "climate":
             pcl = build_pilot_climate_yaml(eq, rule, config)
             if pcl:
                 climates.append(pcl)
@@ -1503,6 +1674,10 @@ def generate_entity_doc(eqlogic_store: Dict[int, Dict[str, Any]], config: Discov
             if select:
                 selects.append(select)
         else:
+            acp = build_alarm_control_panel_yaml(eq, rule, config)
+            if acp:
+                alarm_control_panels.append(acp)
+
             has_climate = False
             pcl = build_pilot_climate_yaml(eq, rule, config)
             if pcl:
@@ -1549,6 +1724,7 @@ def generate_entity_doc(eqlogic_store: Dict[int, Dict[str, Any]], config: Discov
     return {
         "sensor": sensors,
         "binary_sensor": binary_sensors,
+        "alarm_control_panel": alarm_control_panels,
         "climate": climates,
         "light": lights,
         "switch": switches,
@@ -1561,6 +1737,7 @@ def generate_entity_doc(eqlogic_store: Dict[int, Dict[str, Any]], config: Discov
 
 def generate_actions(eqlogic_store: Dict[int, Dict[str, Any]], config: DiscoveryConfig) -> Dict[str, Any]:
     actions: Dict[str, Any] = {
+        "alarm_control_panel": {},
         "light": {},
         "switch": {},
         "water_heater": {},
@@ -1615,6 +1792,7 @@ def generate_actions(eqlogic_store: Dict[int, Dict[str, Any]], config: Discovery
         allow_cover = forced is None or forced == "cover"
         allow_number = forced is None or forced == "number"
         allow_select = forced is None or forced == "select"
+        allow_alarm_panel = forced is None or forced == "alarm_control_panel"
         allow_climate = forced is None or forced == "climate"
         allow_pilot = forced is None or forced == "climate"
 
@@ -1679,6 +1857,21 @@ def generate_actions(eqlogic_store: Dict[int, Dict[str, Any]], config: Discovery
                 "on_cmd_id": int(wh["on_cmd"].get("id")),
                 "off_cmd_id": int(wh["off_cmd"].get("id")),
             }
+
+        acp = detect_alarm_control_panel(eq) if allow_alarm_panel else None
+        if acp:
+            state_cmd = acp["state_cmd"]
+            if not rule or allows_cmd(rule, state_cmd, config):
+                payload: Dict[str, Any] = {"state_cmd_id": int(state_cmd.get("id"))}
+                if acp.get("arm_home_cmd") is not None and (not rule or allows_cmd(rule, acp["arm_home_cmd"], config)):
+                    payload["arm_home_cmd_id"] = int(acp["arm_home_cmd"].get("id"))
+                if acp.get("arm_away_cmd") is not None and (not rule or allows_cmd(rule, acp["arm_away_cmd"], config)):
+                    payload["arm_away_cmd_id"] = int(acp["arm_away_cmd"].get("id"))
+                if acp.get("arm_night_cmd") is not None and (not rule or allows_cmd(rule, acp["arm_night_cmd"], config)):
+                    payload["arm_night_cmd_id"] = int(acp["arm_night_cmd"].get("id"))
+                if acp.get("disarm_cmd") is not None and (not rule or allows_cmd(rule, acp["disarm_cmd"], config)):
+                    payload["disarm_cmd_id"] = int(acp["disarm_cmd"].get("id"))
+                actions["alarm_control_panel"][f"jeedom_{eq_id}"] = payload
 
         if allow_switch and not lt and not wh:
             sw = detect_switch(eq)

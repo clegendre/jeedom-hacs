@@ -1,6 +1,6 @@
 """Constants for the Jeedom integration."""
 
-DOMAIN = "jeedom"
+DOMAIN = "jeedomhub"
 DEFAULT_PORT = 8080
 
 CONF_API_KEY = "api_key"

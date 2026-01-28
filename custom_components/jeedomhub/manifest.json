@@ -1,7 +1,8 @@
 {
-  "domain": "jeedom",
+  "domain": "jeedomhub",
   "name": "Jeedom Hub",
-  "version": "1.0.0",
+  "version": "1.0.1",
+  "integration_type": "hub",
   "config_flow": true,
   "documentation": "https://github.com/clegendre/jeedom-hacs",
   "issue_tracker": "https://github.com/clegendre/jeedom-hacs/issues",

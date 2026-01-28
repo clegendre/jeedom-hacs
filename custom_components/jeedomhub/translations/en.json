@@ -1,0 +1,60 @@
+{
+  "title": "Jeedom Hub",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Jeedom",
+        "description": "Connect to Jeedom and choose how entities are imported.",
+        "data": {
+          "host": "Jeedom URL or host",
+          "port": "Jeedom port",
+          "api_key": "Jeedom API key",
+          "name": "Name",
+          "protocol": "Connection protocol",
+          "import_mode": "Import mode",
+          "domains": "Device domains",
+          "config_path": "Config file path",
+          "use_jsonrpc": "Use JSON-RPC",
+          "jsonrpc_fallback": "Fallback to HTTP",
+          "jsonrpc_url": "JSON-RPC URL override"
+        },
+        "data_description": {
+          "host": "Jeedom base URL or hostname (e.g. http://192.168.1.50).",
+          "port": "Jeedom port (default 8080).",
+          "api_key": "Jeedom API key (Jeedom → Settings → System → API).",
+          "name": "Name shown in Home Assistant.",
+          "protocol": "Transport used to talk to Jeedom (mqtt or api).",
+          "import_mode": "Native creates entities inside this integration; MQTT entities uses Home Assistant’s MQTT integration.",
+          "domains": "Which entity domains to create in Home Assistant.",
+          "config_path": "Optional path to a config.yaml used for device filtering and overrides (same format as jeedomhub generator). Leave empty to import all devices.",
+          "use_jsonrpc": "Use Jeedom JSON-RPC when executing commands.",
+          "jsonrpc_fallback": "Fallback to HTTP API if JSON-RPC fails.",
+          "jsonrpc_url": "Override JSON-RPC endpoint. Leave empty to use Jeedom default."
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Jeedom options",
+        "data": {
+          "import_mode": "Import mode",
+          "domains": "Device domains",
+          "config_path": "Config file path",
+          "use_jsonrpc": "Use JSON-RPC",
+          "jsonrpc_fallback": "Fallback to HTTP",
+          "jsonrpc_url": "JSON-RPC URL override"
+        },
+        "data_description": {
+          "import_mode": "Native creates entities inside this integration; MQTT entities uses Home Assistant’s MQTT integration.",
+          "domains": "Which entity domains to create in Home Assistant.",
+          "config_path": "Optional path to a config.yaml used for device filtering and overrides (same format as jeedomhub generator). Leave empty to import all devices.",
+          "use_jsonrpc": "Use Jeedom JSON-RPC when executing commands.",
+          "jsonrpc_fallback": "Fallback to HTTP API if JSON-RPC fails.",
+          "jsonrpc_url": "Override JSON-RPC endpoint. Leave empty to use Jeedom default."
+        }
+      }
+    }
+  }
+}

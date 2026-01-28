@@ -1,0 +1,60 @@
+{
+  "title": "Jeedom Hub",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Jeedom",
+        "description": "Connectez-vous à Jeedom et choisissez comment les entités sont importées.",
+        "data": {
+          "host": "URL ou hôte Jeedom",
+          "port": "Port Jeedom",
+          "api_key": "Clé API Jeedom",
+          "name": "Nom",
+          "protocol": "Protocole de connexion",
+          "import_mode": "Mode d'importation",
+          "domains": "Domaines d'appareils",
+          "config_path": "Chemin du fichier de configuration",
+          "use_jsonrpc": "Utiliser JSON-RPC",
+          "jsonrpc_fallback": "Basculer sur HTTP",
+          "jsonrpc_url": "Surcharge de l'URL JSON-RPC"
+        },
+        "data_description": {
+          "host": "URL de base ou nom d'hôte de Jeedom (ex. http://192.168.1.50).",
+          "port": "Port Jeedom (par défaut 8080).",
+          "api_key": "Clé API Jeedom (Jeedom → Paramètres → Système → API).",
+          "name": "Nom affiché dans Home Assistant.",
+          "protocol": "Transport utilisé pour communiquer avec Jeedom (mqtt ou api).",
+          "import_mode": "Native crée les entités dans cette intégration ; les entités MQTT utilisent l'intégration MQTT de Home Assistant.",
+          "domains": "Quels domaines d'entités créer dans Home Assistant.",
+          "config_path": "Chemin optionnel vers un config.yaml utilisé pour le filtrage des appareils et les surcharges (même format que le générateur jeedomhub). Laissez vide pour importer tous les appareils.",
+          "use_jsonrpc": "Utiliser le JSON-RPC de Jeedom lors de l'exécution des commandes.",
+          "jsonrpc_fallback": "Basculer sur l'API HTTP si le JSON-RPC échoue.",
+          "jsonrpc_url": "Remplacer le point de terminaison JSON-RPC. Laissez vide pour utiliser la valeur par défaut de Jeedom."
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options Jeedom",
+        "data": {
+          "import_mode": "Mode d'importation",
+          "domains": "Domaines d'appareils",
+          "config_path": "Chemin du fichier de configuration",
+          "use_jsonrpc": "Utiliser JSON-RPC",
+          "jsonrpc_fallback": "Basculer sur HTTP",
+          "jsonrpc_url": "Surcharge de l'URL JSON-RPC"
+        },
+        "data_description": {
+          "import_mode": "Native crée les entités dans cette intégration ; les entités MQTT utilisent l'intégration MQTT de Home Assistant.",
+          "domains": "Quels domaines d'entités créer dans Home Assistant.",
+          "config_path": "Chemin optionnel vers un config.yaml utilisé pour le filtrage des appareils et les surcharges (même format que le générateur jeedomhub). Laissez vide pour importer tous les appareils.",
+          "use_jsonrpc": "Utiliser le JSON-RPC de Jeedom lors de l'exécution des commandes.",
+          "jsonrpc_fallback": "Basculer sur l'API HTTP si le JSON-RPC échoue.",
+          "jsonrpc_url": "Remplacer le point de terminaison JSON-RPC. Laissez vide pour utiliser la valeur par défaut de Jeedom."
+        }
+      }
+    }
+  }
+}

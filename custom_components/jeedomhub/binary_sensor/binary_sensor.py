@@ -42,6 +42,7 @@ class JeedomBinarySensor(JeedomEntity, BinarySensorEntity):
         self._attr_icon = cfg.get("icon")
         self._payload_on = str(cfg.get("payload_on", "1")).strip().lower()
         self._payload_off = str(cfg.get("payload_off", "0")).strip().lower()
+        self._inverted = bool(cfg.get("inverted", False))
         self._attr_is_on = None
 
     def _handle_cmd_update(self, cmd_id: int, value) -> None:
@@ -54,17 +55,20 @@ class JeedomBinarySensor(JeedomEntity, BinarySensorEntity):
         if value is None:
             return None
         if isinstance(value, bool):
-            return value
-        if isinstance(value, (int, float)):
-            return value > 0
-        text = str(value).strip().lower()
-        if text == self._payload_on:
-            return True
-        if text == self._payload_off:
-            return False
-        if text.isdigit():
-            return int(text) > 0
-        return False
+            result = value
+        elif isinstance(value, (int, float)):
+            result = value > 0
+        else:
+            text = str(value).strip().lower()
+            if text == self._payload_on:
+                result = True
+            elif text == self._payload_off:
+                result = False
+            elif text.isdigit():
+                result = int(text) > 0
+            else:
+                result = False
+        return not result if self._inverted else result
 
     def _restore_from_state(self, state) -> None:
         self._attr_is_on = state.state == STATE_ON

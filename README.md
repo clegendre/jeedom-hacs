@@ -103,6 +103,8 @@ devices:
     entity_overrides:
       5678:
         name: Living Room Temperature
+        # For binary sensors, invert the on/off state:
+        # inverted: true
 
   - match:
       eqlogic_name: "Living Room Heater"
@@ -125,6 +127,7 @@ devices:
 Notes:
 - `platform` is an eqLogic-level override; it skips auto-detection for the main entity.
 - `sensor`/`binary_sensor` entities are still detected per-command.
+- `inverted: true` on a binary sensor flips the on/off state (useful when a device reports `1` for off and `0` for on).
 
 ## MQTT topics
 - Discovery: `jeedom/discovery/eqLogic/#`

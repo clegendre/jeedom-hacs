@@ -649,6 +649,7 @@ def build_binary_sensor_yaml(eqlogic: Dict[str, Any], cmd: Dict[str, Any], rule:
         "_cmd_id": cmd_id,
         "payload_on": ov.get("payload_on") or "1",
         "payload_off": ov.get("payload_off") or "0",
+        "inverted": ov.get("inverted", False),
         "value_template": ov.get("value_template") or ("{{ '1' if (value | int(0)) > 0 else '0' }}" if st == "numeric" else None),
         "device": {
             "identifiers": [ov.get("device_identifier") or f"jeedom_{dslug}"],

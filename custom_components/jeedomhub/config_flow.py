@@ -79,6 +79,24 @@ class JeedomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data=user_input,
         )
 
+    async def async_step_reconfigure(self, user_input=None) -> FlowResult:
+        """Handle reconfiguration of connection settings."""
+        entry = self._get_reconfigure_entry()
+        if user_input is not None:
+            return self.async_update_reload_and_abort(
+                entry,
+                data_updates=user_input,
+            )
+
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_HOST, default=entry.data.get(CONF_HOST, "")): str,
+                vol.Optional(CONF_PORT, default=entry.data.get(CONF_PORT, DEFAULT_PORT)): int,
+                vol.Required(CONF_API_KEY, default=entry.data.get(CONF_API_KEY, "")): str,
+            }
+        )
+        return self.async_show_form(step_id="reconfigure", data_schema=schema)
+
     @staticmethod
     def async_get_options_flow(config_entry):
         return JeedomOptionsFlowHandler(config_entry)
@@ -100,6 +118,18 @@ class JeedomOptionsFlowHandler(config_entries.OptionsFlow):
 
         schema = vol.Schema(
             {
+                vol.Required(
+                    CONF_HOST,
+                    default=options.get(CONF_HOST, data.get(CONF_HOST, "")),
+                ): str,
+                vol.Optional(
+                    CONF_PORT,
+                    default=options.get(CONF_PORT, data.get(CONF_PORT, DEFAULT_PORT)),
+                ): int,
+                vol.Required(
+                    CONF_API_KEY,
+                    default=options.get(CONF_API_KEY, data.get(CONF_API_KEY, "")),
+                ): str,
                 vol.Optional(
                     CONF_IMPORT_MODE,
                     default=options.get(

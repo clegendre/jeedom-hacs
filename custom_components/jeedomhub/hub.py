@@ -31,7 +31,7 @@ from .const import (
     MQTT_DISCOVERY_TOPIC,
     MQTT_EVENT_TOPIC,
 )
-from .discovery import JeedomDiscoveryEngine, load_config
+from .discovery import DiscoveryConfig, JeedomDiscoveryEngine, load_config
 from .models import JeedomEntitySpec
 
 _LOGGER = logging.getLogger(__name__)
@@ -84,16 +84,8 @@ class JeedomHub:
         self._save_task: Optional[asyncio.Task] = None
 
         config_path = entry.options.get(CONF_CONFIG_PATH) or entry.data.get(CONF_CONFIG_PATH)
-        path_obj = Path(config_path) if config_path else None
-        config = load_config(path_obj)
-        self._discovery = JeedomDiscoveryEngine(config)
-        if config_path:
-            _LOGGER.debug(
-                "Loaded Jeedom config from %s (devices=%s, include_all_if_no_filter=%s)",
-                config_path,
-                len(config.devices),
-                config.include_all_if_no_filter,
-            )
+        self._config_path = Path(config_path) if config_path else None
+        self._discovery = JeedomDiscoveryEngine(DiscoveryConfig())
         self._import_mode = entry.options.get(CONF_IMPORT_MODE) or entry.data.get(
             CONF_IMPORT_MODE, IMPORT_MODE_NATIVE
         )
@@ -135,6 +127,15 @@ class JeedomHub:
 
     async def async_setup(self) -> None:
         _LOGGER.debug("Setting up Jeedom hub")
+        config = await self.hass.async_add_executor_job(load_config, self._config_path)
+        self._discovery.set_config(config)
+        if self._config_path:
+            _LOGGER.debug(
+                "Loaded Jeedom config from %s (devices=%s, include_all_if_no_filter=%s)",
+                self._config_path,
+                len(config.devices),
+                config.include_all_if_no_filter,
+            )
         if self.is_native_mode:
             await self._restore_discovery()
             self._unsub_mqtt.append(

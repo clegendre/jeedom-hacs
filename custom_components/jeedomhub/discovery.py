@@ -754,8 +754,8 @@ def detect_switch(eqlogic: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     off_cmd = None
 
     for action in actions:
-        lid = action.get("logicalId", "")
-        name = action.get("name", "").lower()
+        lid = (action.get("logicalId") or "").lower()
+        name = (action.get("name") or "").lower()
 
         if "setvalue-true" in lid or name == "on":
             on_cmd = action

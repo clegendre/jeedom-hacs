@@ -99,9 +99,9 @@ class JeedomHub:
             self._import_mode = IMPORT_MODE_NATIVE
 
     def _build_api(self) -> JeedomApi:
-        host = self.entry.data.get(CONF_HOST)
-        port = self.entry.data.get(CONF_PORT)
-        api_key = self.entry.data.get(CONF_API_KEY)
+        host = self.entry.options.get(CONF_HOST) or self.entry.data.get(CONF_HOST)
+        port = self.entry.options.get(CONF_PORT) or self.entry.data.get(CONF_PORT)
+        api_key = self.entry.options.get(CONF_API_KEY) or self.entry.data.get(CONF_API_KEY)
         jsonrpc_url = self.entry.options.get(CONF_JSONRPC_URL) or self.entry.data.get(CONF_JSONRPC_URL)
         use_jsonrpc = self.entry.options.get(CONF_USE_JSONRPC)
         jsonrpc_fallback = self.entry.options.get(CONF_JSONRPC_FALLBACK)

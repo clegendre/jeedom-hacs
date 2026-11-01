@@ -1331,7 +1331,7 @@ def detect_light(eqlogic: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         name = (info.get("name") or "").strip().lower()
 
         if state_bin is None and info.get("subType") == "binary":
-            if name in ("etat", "state", "on", "off") or "currentvalue" in lid:
+            if name in ("etat", "state", "on", "off") or _norm_text(name).startswith(("etat", "state")) or "currentvalue" in lid:
                 state_bin = info
 
         if info.get("subType") == "numeric":
